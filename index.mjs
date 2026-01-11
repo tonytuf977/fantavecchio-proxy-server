@@ -3,7 +3,7 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
-import emailjs from 'emailjs-com';
+import emailjs from '@emailjs/nodejs';
 
 const app = express();
 const port = 3001;
@@ -30,7 +30,7 @@ const EMAILJS_SERVICE_ID = 'service_0knpeti';
 const EMAILJS_TEMPLATE_ID = 'template_8eoqu2a';
 const EMAILJS_PUBLIC_KEY = '1P283n6VVbx-OeBKb';
 
-emailjs.init(EMAILJS_PUBLIC_KEY);
+// NON serve più emailjs.init() con @emailjs/nodejs
 
 // Credenziali
 const CREDENTIALS = {
@@ -427,7 +427,9 @@ Buona fortuna a tutti! 🍀
             subject: soggetto,
             message: messaggio
           },
-          EMAILJS_PUBLIC_KEY
+          {
+            publicKey: EMAILJS_PUBLIC_KEY,
+          }
         );
         
         console.log(`✅ Email inviata a: ${utente.email}`);
