@@ -3,7 +3,6 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
-import nodemailer from 'nodemailer';
 
 const app = express();
 const port = 3001;
@@ -25,15 +24,10 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
-// Configurazione Email con Nodemailer
-// NOTA: Per usare Gmail devi creare una "App Password" su https://myaccount.google.com/apppasswords
-const transporter = nodemailer.createTransport({
-  service: 'gmail',
-  auth: {
-    user: 'fantavecchio@gmail.com',
-    pass: 'went sepk sewv svyd' // ⚠️ SOSTITUISCI CON LA TUA APP PASSWORD DI GMAIL
-  }
-});
+// Configurazione Email con Brevo (ex Sendinblue) - API HTTP
+// La API Key deve essere impostata come variabile d'ambiente su Render: BREVO_API_KEY
+const BREVO_API_KEY = process.env.BREVO_API_KEY || 'your-brevo-api-key-here';
+const BREVO_API_URL = 'https://api.brevo.com/v3/smtp/email';
 
 // Credenziali
 const CREDENTIALS = {
@@ -423,15 +417,38 @@ Buona fortuna a tutti! 🍀
       try {
         console.log(`📤 Tentativo invio email a: ${utente.email}...`);
         
-        await transporter.sendMail({
-          from: '"FantaVecchio Manager" <fantavecchio@gmail.com>',
-          to: utente.email,
-          subject: soggetto,
-          text: messaggio,
-          html: `<pre>${messaggio}</pre>`
+        // Chiama API Brevo per inviare email
+        const response = await fetch(BREVO_API_URL, {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'api-key': BREVO_API_KEY,
+            'content-type': 'application/json'
+          },
+          body: JSON.stringify({
+            sender: {
+              name: "FantaVecchio Manager",
+              email: "fantavecchio@gmail.com"
+            },
+            to: [
+              {
+                email: utente.email,
+                name: utente.nome || utente.email.split('@')[0]
+              }
+            ],
+            subject: soggetto,
+            textContent: messaggio,
+            htmlContent: `<pre style="font-family: Arial, sans-serif; white-space: pre-wrap;">${messaggio}</pre>`
+          })
         });
         
-        console.log(`✅ Email inviata con successo a: ${utente.email}`);
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(`Brevo API error: ${JSON.stringify(errorData)}`);
+        }
+        
+        const result = await response.json();
+        console.log(`✅ Email inviata con successo a: ${utente.email} (messageId: ${result.messageId})`);
         
         // Delay di 500ms tra ogni email per evitare rate limiting
         if (i < utentiConEmail.length - 1) {
