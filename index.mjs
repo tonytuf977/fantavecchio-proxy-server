@@ -254,6 +254,10 @@ app.get('/api/check-finestra-scambi', async (req, res) => {
     const finestraRef = doc(db, 'Impostazioni', finestraDoc.id);
     
     console.log(`📊 Stato attuale: ${finestraData.aperta ? 'APERTA' : 'CHIUSA'}`);
+    console.log(`📅 Data apertura: ${finestraData.dataApertura || 'NON IMPOSTATA'}`);
+    console.log(`⏰ Ora apertura: ${finestraData.oraApertura || 'NON IMPOSTATA'}`);
+    console.log(`📅 Data chiusura: ${finestraData.dataChiusura || 'NON IMPOSTATA'}`);
+    console.log(`⏰ Ora chiusura: ${finestraData.oraChiusura || 'NON IMPOSTATA'}`);
     
     const now = new Date();
     const currentDateTime = now.getTime();
