@@ -3,7 +3,6 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
-import emailjs from '@emailjs/nodejs';
 
 const app = express();
 const port = 3001;
@@ -29,8 +28,6 @@ const db = getFirestore(firebaseApp);
 const EMAILJS_SERVICE_ID = 'service_0knpeti';
 const EMAILJS_TEMPLATE_ID = 'template_8eoqu2a';
 const EMAILJS_PUBLIC_KEY = '1P283n6VVbx-OeBKb';
-
-// NON serve più emailjs.init() con @emailjs/nodejs
 
 // Credenziali
 const CREDENTIALS = {
@@ -418,21 +415,31 @@ Buona fortuna a tutti! 🍀
       const utente = utentiConEmail[i];
       
       try {
-        await emailjs.send(
-          EMAILJS_SERVICE_ID,
-          EMAILJS_TEMPLATE_ID,
-          {
-            to_email: utente.email,
-            to_name: utente.nome || utente.email.split('@')[0],
-            subject: soggetto,
-            message: messaggio
+        // Usa fetch diretto all'API EmailJS invece della libreria
+        const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
           },
-          {
-            publicKey: EMAILJS_PUBLIC_KEY,
-          }
-        );
+          body: JSON.stringify({
+            service_id: EMAILJS_SERVICE_ID,
+            template_id: EMAILJS_TEMPLATE_ID,
+            user_id: EMAILJS_PUBLIC_KEY,
+            template_params: {
+              to_email: utente.email,
+              to_name: utente.nome || utente.email.split('@')[0],
+              subject: soggetto,
+              message: messaggio
+            }
+          })
+        });
         
-        console.log(`✅ Email inviata a: ${utente.email}`);
+        if (response.ok) {
+          console.log(`✅ Email inviata a: ${utente.email}`);
+        } else {
+          const errorText = await response.text();
+          console.error(`❌ Errore invio email a ${utente.email}: ${response.status} - ${errorText}`);
+        }
         
         // Delay di 500ms tra ogni email per evitare rate limiting
         if (i < utentiConEmail.length - 1) {
