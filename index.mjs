@@ -268,7 +268,8 @@ app.get('/api/check-finestra-scambi', async (req, res) => {
     
     // PRIORITÀ 1: Controlla CHIUSURA
     if (finestraData.dataChiusura && finestraData.oraChiusura && finestraData.aperta) {
-      const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
+      // Interpreta l'orario come ora italiana (GMT+1), quindi sottrai 1 ora per ottenere UTC
+      const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}:00.000Z`).getTime() - 3600000; // -1 ora
       console.log(`🔍 Confronto chiusura: currentDateTime=${currentDateTime} >= chiusuraDateTime=${chiusuraDateTime} ? ${currentDateTime >= chiusuraDateTime}`);
       
       if (currentDateTime >= chiusuraDateTime) {
@@ -288,7 +289,8 @@ app.get('/api/check-finestra-scambi', async (req, res) => {
     
     // PRIORITÀ 2: Controlla APERTURA (solo se non abbiamo appena chiuso)
     if (azioni.length === 0 && finestraData.dataApertura && finestraData.oraApertura && !finestraData.aperta) {
-      const aperturaDateTime = new Date(`${finestraData.dataApertura}T${finestraData.oraApertura}`).getTime();
+      // Interpreta l'orario come ora italiana (GMT+1), quindi sottrai 1 ora per ottenere UTC
+      const aperturaDateTime = new Date(`${finestraData.dataApertura}T${finestraData.oraApertura}:00.000Z`).getTime() - 3600000; // -1 ora
       const aperturaDate = new Date(finestraData.dataApertura);
       const currentDate = new Date();
       const isSameDay = aperturaDate.toDateString() === currentDate.toDateString();
@@ -298,7 +300,7 @@ app.get('/api/check-finestra-scambi', async (req, res) => {
       if (isSameDay && currentDateTime >= aperturaDateTime) {
         // Verifica che non sia già passato l'orario di chiusura
         if (finestraData.dataChiusura && finestraData.oraChiusura) {
-          const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
+          const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}:00.000Z`).getTime() - 3600000; // -1 ora
           if (currentDateTime >= chiusuraDateTime) {
             console.log('⚠️ Orario di chiusura già passato, non apro');
             return res.json({ message: 'Orario di chiusura già superato' });
