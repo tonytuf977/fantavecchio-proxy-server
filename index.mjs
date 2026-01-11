@@ -261,11 +261,15 @@ app.get('/api/check-finestra-scambi', async (req, res) => {
     
     const now = new Date();
     const currentDateTime = now.getTime();
+    console.log(`🕐 Ora server (UTC): ${now.toISOString()}`);
+    console.log(`🕐 Ora server (Italia): ${new Date(now.getTime() + 3600000).toISOString()}`);
+    
     let azioni = [];
     
     // PRIORITÀ 1: Controlla CHIUSURA
     if (finestraData.dataChiusura && finestraData.oraChiusura && finestraData.aperta) {
       const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
+      console.log(`🔍 Confronto chiusura: currentDateTime=${currentDateTime} >= chiusuraDateTime=${chiusuraDateTime} ? ${currentDateTime >= chiusuraDateTime}`);
       
       if (currentDateTime >= chiusuraDateTime) {
         console.log('⏰ AZIONE: Chiudere finestra scambi');
@@ -288,6 +292,8 @@ app.get('/api/check-finestra-scambi', async (req, res) => {
       const aperturaDate = new Date(finestraData.dataApertura);
       const currentDate = new Date();
       const isSameDay = aperturaDate.toDateString() === currentDate.toDateString();
+      
+      console.log(`🔍 Confronto apertura: isSameDay=${isSameDay}, currentDateTime=${currentDateTime} >= aperturaDateTime=${aperturaDateTime} ? ${currentDateTime >= aperturaDateTime}`);
       
       if (isSameDay && currentDateTime >= aperturaDateTime) {
         // Verifica che non sia già passato l'orario di chiusura
