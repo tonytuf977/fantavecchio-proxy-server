@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import nodemailer from 'nodemailer';
 
 const app = express();
 const port = 3001;
@@ -24,10 +25,15 @@ const firebaseConfig = {
 const firebaseApp = initializeApp(firebaseConfig);
 const db = getFirestore(firebaseApp);
 
-// EmailJS Configuration
-const EMAILJS_SERVICE_ID = 'service_0knpeti';
-const EMAILJS_TEMPLATE_ID = 'template_8eoqu2a';
-const EMAILJS_PUBLIC_KEY = '1P283n6VVbx-OeBKb';
+// Configurazione Email con Nodemailer
+// NOTA: Per usare Gmail devi creare una "App Password" su https://myaccount.google.com/apppasswords
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: 'fantavecchio@gmail.com',
+    pass: 'your-app-password-here' // ⚠️ SOSTITUISCI CON LA TUA APP PASSWORD DI GMAIL
+  }
+});
 
 // Credenziali
 const CREDENTIALS = {
@@ -415,31 +421,15 @@ Buona fortuna a tutti! 🍀
       const utente = utentiConEmail[i];
       
       try {
-        // Usa fetch diretto all'API EmailJS invece della libreria
-        const response = await fetch('https://api.emailjs.com/api/v1.0/email/send', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            service_id: EMAILJS_SERVICE_ID,
-            template_id: EMAILJS_TEMPLATE_ID,
-            user_id: EMAILJS_PUBLIC_KEY,
-            template_params: {
-              to_email: utente.email,
-              to_name: utente.nome || utente.email.split('@')[0],
-              subject: soggetto,
-              message: messaggio
-            }
-          })
+        await transporter.sendMail({
+          from: '"FantaVecchio Manager" <fantavecchio@gmail.com>',
+          to: utente.email,
+          subject: soggetto,
+          text: messaggio,
+          html: `<pre>${messaggio}</pre>`
         });
         
-        if (response.ok) {
-          console.log(`✅ Email inviata a: ${utente.email}`);
-        } else {
-          const errorText = await response.text();
-          console.error(`❌ Errore invio email a ${utente.email}: ${response.status} - ${errorText}`);
-        }
+        console.log(`✅ Email inviata a: ${utente.email}`);
         
         // Delay di 500ms tra ogni email per evitare rate limiting
         if (i < utentiConEmail.length - 1) {
