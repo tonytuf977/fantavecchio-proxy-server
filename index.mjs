@@ -421,6 +421,8 @@ Buona fortuna a tutti! 🍀
       const utente = utentiConEmail[i];
       
       try {
+        console.log(`📤 Tentativo invio email a: ${utente.email}...`);
+        
         await transporter.sendMail({
           from: '"FantaVecchio Manager" <fantavecchio@gmail.com>',
           to: utente.email,
@@ -429,14 +431,18 @@ Buona fortuna a tutti! 🍀
           html: `<pre>${messaggio}</pre>`
         });
         
-        console.log(`✅ Email inviata a: ${utente.email}`);
+        console.log(`✅ Email inviata con successo a: ${utente.email}`);
         
         // Delay di 500ms tra ogni email per evitare rate limiting
         if (i < utentiConEmail.length - 1) {
           await new Promise(resolve => setTimeout(resolve, 500));
         }
       } catch (emailError) {
-        console.error(`❌ Errore invio email a ${utente.email}:`, emailError.message);
+        console.error(`❌ ERRORE INVIO EMAIL a ${utente.email}:`);
+        console.error(`   Tipo: ${emailError.name}`);
+        console.error(`   Messaggio: ${emailError.message}`);
+        console.error(`   Code: ${emailError.code || 'N/A'}`);
+        console.error(`   Response: ${emailError.response || 'N/A'}`);
       }
     }
     
