@@ -1,11 +1,36 @@
 import express from 'express';
 import fetch from 'node-fetch';
 import cors from 'cors';
+import { initializeApp } from 'firebase/app';
+import { getFirestore, collection, query, where, getDocs, doc, getDoc, updateDoc } from 'firebase/firestore';
+import emailjs from 'emailjs-com';
 
 const app = express();
 const port = 3001;
 
 app.use(cors());
+app.use(express.json());
+
+// Firebase Configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyARdAe3_15_Ny4tjbg9tdadCJo0BPImIM4",
+  authDomain: "fantavecchio-manager.firebaseapp.com",
+  projectId: "fantavecchio-manager",
+  storageBucket: "fantavecchio-manager.firebasestorage.app",
+  messagingSenderId: "1087765312837",
+  appId: "1:1087765312837:web:06741c3f2b6f89efcaba2c"
+};
+
+// Initialize Firebase
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getFirestore(firebaseApp);
+
+// EmailJS Configuration
+const EMAILJS_SERVICE_ID = 'service_0knpeti';
+const EMAILJS_TEMPLATE_ID = 'template_8eoqu2a';
+const EMAILJS_PUBLIC_KEY = '1P283n6VVbx-OeBKb';
+
+emailjs.init(EMAILJS_PUBLIC_KEY);
 
 // Credenziali
 const CREDENTIALS = {
@@ -204,6 +229,219 @@ app.get('/api/giocatori', async (req, res) => {
     });
   }
 });
+
+// ============================================
+// NUOVO ENDPOINT: Controllo finestra scambi
+// ============================================
+app.get('/api/check-finestra-scambi', async (req, res) => {
+  try {
+    console.log('🔍 [CRON] Controllo finestra scambi...');
+    
+    // Recupera le impostazioni della finestra scambi
+    const finestraQuery = query(
+      collection(db, 'Impostazioni'), 
+      where('nome', '==', 'finestraScambi')
+    );
+    const finestraSnapshot = await getDocs(finestraQuery);
+    
+    if (finestraSnapshot.empty) {
+      console.log('⚠️ Documento finestraScambi non trovato');
+      return res.json({ message: 'Nessuna configurazione trovata' });
+    }
+    
+    const finestraDoc = finestraSnapshot.docs[0];
+    const finestraData = finestraDoc.data();
+    const finestraRef = doc(db, 'Impostazioni', finestraDoc.id);
+    
+    console.log(`📊 Stato attuale: ${finestraData.aperta ? 'APERTA' : 'CHIUSA'}`);
+    
+    const now = new Date();
+    const currentDateTime = now.getTime();
+    let azioni = [];
+    
+    // PRIORITÀ 1: Controlla CHIUSURA
+    if (finestraData.dataChiusura && finestraData.oraChiusura && finestraData.aperta) {
+      const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
+      
+      if (currentDateTime >= chiusuraDateTime) {
+        console.log('⏰ AZIONE: Chiudere finestra scambi');
+        
+        // Aggiorna database
+        await updateDoc(finestraRef, { aperta: false });
+        azioni.push('Finestra chiusa');
+        
+        // Invia email SOLO se non è stata inviata di recente
+        const shouldSendEmail = await checkAndSendEmail(finestraRef, finestraData, false);
+        if (shouldSendEmail) {
+          azioni.push('Email di chiusura inviata');
+        }
+      }
+    }
+    
+    // PRIORITÀ 2: Controlla APERTURA (solo se non abbiamo appena chiuso)
+    if (azioni.length === 0 && finestraData.dataApertura && finestraData.oraApertura && !finestraData.aperta) {
+      const aperturaDateTime = new Date(`${finestraData.dataApertura}T${finestraData.oraApertura}`).getTime();
+      const aperturaDate = new Date(finestraData.dataApertura);
+      const currentDate = new Date();
+      const isSameDay = aperturaDate.toDateString() === currentDate.toDateString();
+      
+      if (isSameDay && currentDateTime >= aperturaDateTime) {
+        // Verifica che non sia già passato l'orario di chiusura
+        if (finestraData.dataChiusura && finestraData.oraChiusura) {
+          const chiusuraDateTime = new Date(`${finestraData.dataChiusura}T${finestraData.oraChiusura}`).getTime();
+          if (currentDateTime >= chiusuraDateTime) {
+            console.log('⚠️ Orario di chiusura già passato, non apro');
+            return res.json({ message: 'Orario di chiusura già superato' });
+          }
+        }
+        
+        console.log('⏰ AZIONE: Aprire finestra scambi');
+        
+        // Aggiorna database
+        await updateDoc(finestraRef, { aperta: true });
+        azioni.push('Finestra aperta');
+        
+        // Invia email SOLO se non è stata inviata di recente
+        const shouldSendEmail = await checkAndSendEmail(finestraRef, finestraData, true);
+        if (shouldSendEmail) {
+          azioni.push('Email di apertura inviata');
+        }
+      }
+    }
+    
+    if (azioni.length === 0) {
+      console.log('✅ Nessuna azione necessaria');
+      return res.json({ message: 'Nessuna azione necessaria', stato: finestraData.aperta ? 'APERTA' : 'CHIUSA' });
+    }
+    
+    console.log(`✅ Azioni eseguite: ${azioni.join(', ')}`);
+    res.json({ 
+      message: 'Controllo completato', 
+      azioni,
+      nuovoStato: azioni.includes('Finestra aperta') ? 'APERTA' : 'CHIUSA'
+    });
+    
+  } catch (error) {
+    console.error('❌ Errore controllo finestra scambi:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Funzione per controllare e inviare email (evita duplicati)
+async function checkAndSendEmail(finestraRef, finestraData, isApertura) {
+  try {
+    const ultimaEmailInviata = finestraData.ultimaEmailInviata;
+    
+    // Controlla se l'ultima email è stata inviata meno di 10 minuti fa
+    if (ultimaEmailInviata) {
+      const now = new Date().getTime();
+      const lastEmailTime = new Date(ultimaEmailInviata).getTime();
+      const minutesSinceLastEmail = (now - lastEmailTime) / (1000 * 60);
+      
+      if (minutesSinceLastEmail < 10) {
+        console.log(`⚠️ Email NON inviata: ultima email ${minutesSinceLastEmail.toFixed(1)} minuti fa`);
+        return false;
+      }
+    }
+    
+    // Recupera tutti gli utenti
+    const utentiSnapshot = await getDocs(collection(db, 'Utenti'));
+    const utentiConEmail = utentiSnapshot.docs
+      .map(doc => doc.data())
+      .filter(u => u.email && u.email.includes('@'));
+    
+    if (utentiConEmail.length === 0) {
+      console.log('⚠️ Nessun utente con email trovato');
+      return false;
+    }
+    
+    // Prepara il contenuto dell'email
+    let soggetto, messaggio;
+    
+    if (isApertura) {
+      soggetto = `🚨 MERCATO APERTO! Finestra Scambi Automaticamente Spalancata! 🚨`;
+      messaggio = `🎉 ATTENZIONE FANTASISTI! 🎉
+
+La finestra scambi è stata UFFICIALMENTE APERTA automaticamente! 
+
+⚡ È ora di scatenare la vostra fantasia manageriale! ⚡
+💰 Contrattazioni, trattative e colpi di genio vi aspettano!
+🔥 Chi farà l'affare del secolo? Chi si pentirà amaramente?
+
+Il mercato è BOLLENTE e le vostre rose tremano di paura! 
+Non perdete tempo: ogni minuto può essere quello decisivo per costruire la squadra dei vostri sogni... o per rovinare tutto! 😈
+
+Che le contrattazioni abbiano inizio! 
+Accedete subito alla piattaforma e date il via alla vostra strategia!
+
+In bocca al lupo (e che vinca il migliore)! 🍀
+- Il Team FantaVecchio 🏆`;
+    } else {
+      soggetto = `🔒 MERCATO CHIUSO! Finestra Scambi Automaticamente Serrata! 🔒`;
+      messaggio = `😱 STOP ALLE DANZE! 😱
+
+La finestra scambi è stata UFFICIALMENTE CHIUSA automaticamente!
+
+⏰ Il tempo è scaduto! Non ci sono più trattative possibili!
+📊 Ora è tempo di vedere chi ha fatto gli affari migliori...
+🤔 Chi ha costruito la rosa perfetta? Chi si morderà le mani per l'occasione persa?
+
+Le rose sono CONGELATE fino alla prossima apertura del mercato!
+Non resta che aspettare e vedere all'opera i vostri acquisti... 
+Speriamo abbiate scelto bene! 😅
+
+Tutte le richieste in corso rimangono valide e possono ancora essere completate.
+
+Ora rilassatevi e godetevi il campionato! 
+(O iniziate già a pianificare la prossima sessione di mercato...) 😏
+
+Buona fortuna a tutti! 🍀
+- Il Team FantaVecchio 🏆`;
+    }
+    
+    console.log(`📧 Invio email a ${utentiConEmail.length} utenti...`);
+    
+    // Invia email a tutti gli utenti con delay
+    for (let i = 0; i < utentiConEmail.length; i++) {
+      const utente = utentiConEmail[i];
+      
+      try {
+        await emailjs.send(
+          EMAILJS_SERVICE_ID,
+          EMAILJS_TEMPLATE_ID,
+          {
+            to_email: utente.email,
+            to_name: utente.nome || utente.email.split('@')[0],
+            subject: soggetto,
+            message: messaggio
+          },
+          EMAILJS_PUBLIC_KEY
+        );
+        
+        console.log(`✅ Email inviata a: ${utente.email}`);
+        
+        // Delay di 500ms tra ogni email per evitare rate limiting
+        if (i < utentiConEmail.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      } catch (emailError) {
+        console.error(`❌ Errore invio email a ${utente.email}:`, emailError.message);
+      }
+    }
+    
+    // Salva timestamp ultima email
+    await updateDoc(finestraRef, { 
+      ultimaEmailInviata: new Date().toISOString() 
+    });
+    
+    console.log('✅ Tutte le email sono state inviate');
+    return true;
+    
+  } catch (error) {
+    console.error('❌ Errore nell\'invio email:', error);
+    return false;
+  }
+}
 
 app.listen(port, () => {
   console.log(`Server in ascolto su http://localhost:${port}`);
