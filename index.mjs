@@ -344,13 +344,13 @@ async function checkAndSendEmail(finestraRef, finestraData, isApertura) {
   try {
     const ultimaEmailInviata = finestraData.ultimaEmailInviata;
     
-    // Controlla se l'ultima email è stata inviata meno di 10 minuti fa
+    // Controlla se l'ultima email è stata inviata meno di 3 minuti fa (ridotto per matching con UptimeRobot)
     if (ultimaEmailInviata) {
       const now = new Date().getTime();
       const lastEmailTime = new Date(ultimaEmailInviata).getTime();
       const minutesSinceLastEmail = (now - lastEmailTime) / (1000 * 60);
       
-      if (minutesSinceLastEmail < 10) {
+      if (minutesSinceLastEmail < 3) {
         console.log(`⚠️ Email NON inviata: ultima email ${minutesSinceLastEmail.toFixed(1)} minuti fa`);
         return false;
       }
